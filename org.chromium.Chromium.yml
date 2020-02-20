@@ -1,0 +1,147 @@
+---
+app-id: org.chromium.Chromium
+runtime: org.freedesktop.Platform
+runtime-version: '19.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+- org.freedesktop.Sdk.Extension.openjdk
+command: run-chromium.sh
+finish-args:
+- "--device=dri"
+- "--share=ipc"
+- "--share=network"
+- "--socket=pulseaudio"
+- "--socket=system-bus"
+- "--socket=wayland"
+- "--socket=x11"
+- "--system-talk-name=org.freedesktop.GeoClue2"
+
+build-options:
+  strip: true
+  no-debuginfo: true
+
+cleanup:
+- "/include"
+- "/lib/python2.7"
+- "/bin/python*"
+- "/bin/*lld*"
+- "/bin/wasm-ld"
+- "/bin/2to3"
+- "/bin/pydoc"
+- "*.a"
+
+modules:
+# Chromium only linkes with lld. gold might work, too, however it is only supported
+# on ChromeOS; buildfiles fobid it.
+- name: lld
+  buildsystem: cmake-ninja
+  builddir: true
+  sources:
+  - type: archive
+    url: https://github.com/llvm/llvm-project/releases/download/llvmorg-8.0.1/lld-8.0.1.src.tar.xz
+    sha256: 9fba1e94249bd7913e8a6c3aadcb308b76c8c3d83c5ce36c99c3f34d73873d88
+- name: krb5
+  buildsystem: autotools
+  subdir: src
+  sources:
+  - type: archive
+    url: https://web.mit.edu/kerberos/dist/krb5/1.17/krb5-1.17.1.tar.gz
+    sha512: e0c3dc0a6554ab3105ac32f3f01519f56064500213aa743816235d83250abc1db9a9ca38a2ba93a938d562b4af135a013017ce96346d6742bca0c812b842ceef 
+
+# Sadly, chromium still needs python2 for build and pre-built pypy doesn't suffice.
+# TODO: build internally, we only need it as build time dep.
+- name: python2
+  buildsystem: autotools
+  sources:
+  - type: archive
+    url: https://www.python.org/ftp/python/2.7.17/Python-2.7.17.tar.xz
+    md5: b3b6d2c92f42a60667814358ab9f0cfd
+- name: chromium-launcher
+  buildsystem: simple
+  build-commands:
+  - sed -i 's:/usr:/app:g' Makefile
+  - make
+  - make PREFIX=/ DESTDIR=/app install
+  sources:
+  - type: archive
+    url: https://github.com/foutrelis/chromium-launcher/archive/v6.tar.gz
+    sha256: 04917e3cd4307d8e31bfb0027a5dce6d086edb10ff8a716024fbb8bb0c7dccf1
+- name: chromium
+  buildsystem: simple
+  build-commands:
+  - ./chromium-build.sh
+  build-options:
+    # defaults, except:
+    # no exceptions and no -fstack-clash-protection -fcf-protection 
+    cflags: '-O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -grecord-gcc-switches -fasynchronous-unwind-tables'
+    cxxflags: '-O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -grecord-gcc-switches -fasynchronous-unwind-tables'
+    cflags-override: true
+    cxxflags-override: true
+  sources:
+  - type: file
+    path: chromium-build.sh
+  - type: archive
+    url: https://nodejs.org/dist/v12.16.1/node-v12.16.1-linux-x64.tar.xz
+    sha256: b826753f14df9771609ffb8e7d2cc4cb395247cb704cf0cea0f04132d9cf3505
+
+  # GN "latest" as of 2020-02-20
+  - type: archive
+    url: https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/xEjSB-LkRb2Z8eWpkhwLpNxVLqjHsmfulUnOEgeZjWIC
+    dest-filename: gn-latest.zip
+    sha256: c448d207e2e445bd99f1e5a9921c0ba4dc552ea8c7b267ee9549ce1207998d62
+  - type: archive
+    url: https://commondatastorage.googleapis.com/chromium-browser-official/chromium-80.0.3987.116.tar.xz
+    sha256: 65c5d9bc510b712170c6013acd3bbb07d770a1ce02d64d01890386e9e5678901
+
+  # https://crbug.com/957519
+  - type: patch
+    path: cros-search-service-Include-cmath-for-std-pow.patch
+  - type: patch
+    path: move-RemoteTreeNode-declaration.patch
+
+  # https://crbug.com/1027929
+  - type: patch
+    path: sync-enable-USSPasswords-by-default.patch
+  - type: patch
+
+  # https://crbug.com/989153
+    path: fix-shim-header-generation-when-unbundling-ICU.patch
+
+  # https://crbug.com/977964
+  - type: patch
+    path: fix-building-with-system-zlib.patch
+
+  # https://crbug.com/1005508
+  - type: patch
+    path: remove-verbose-logging-in-local-unique-font-matching.patch
+
+  # https://crbug.com/1043042
+  - type: patch
+    path: fix-building-with-unbundled-libxml.patch
+
+  # https://crbug.com/1049258
+  - type: patch
+    path: rename-Relayout-in-DesktopWindowTreeHostPlatform.patch
+  - type: patch
+    path: rebuild-Linux-frame-button-cache-when-activation.patch
+
+  # Load bundled Widevine CDM if available (see chromium-widevine in the AUR)
+  # M79 is supposed to download it as a component but it doesn't seem to work
+  - type: patch
+    path: chromium-widevine.patch
+
+  # https://crbug.com/skia/6663#c10
+  - type: patch
+    path: chromium-skia-harmony.patch
+    strip-components: 0
+  - type: patch
+    path: mojom_bindings_generator-pypy_fix.patch
+- name: chromium-run
+  buildsystem: simple
+  build-commands:
+  - install -Dm755 run.sh /app/bin/run-chromium.sh
+  sources:
+  - type: script
+    dest-filename: run.sh
+    commands:
+    - "exec chromium --no-sandbox $@"

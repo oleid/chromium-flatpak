@@ -1,0 +1,37 @@
+--- a/mojo/public/tools/bindings/mojom_bindings_generator.py	2020-02-18 19:40:52.000000000 +0100
++++ b/mojo/public/tools/bindings/mojom_bindings_generator.py	2020-02-19 14:11:46.977516023 +0100
+@@ -343,20 +343,20 @@
+ 
+ def GetSourcesList(target_prefix, sources_list, gen_dir):
+   deps_list_path = target_prefix + ".deps_sources_list"
+-  f_deps_list = open(deps_list_path, 'r')
+-  for deps_sources_path in f_deps_list:
+-    target_name_with_dir = deps_sources_path.split(".sources_list")[0]
+-    if (target_name_with_dir == target_prefix):
+-      # add files from the target itself
+-      deps_sources_path = deps_sources_path.rstrip('\n')
+-      f_sources = open(deps_sources_path, 'r')
+-      for source_file in f_sources:
+-        full_source_path = os.path.dirname(target_name_with_dir.split(gen_dir \
+-        + "/", 1)[1]) + "/" + source_file
+-        sources_list.add(full_source_path.rstrip('\n'))
+-    else:
+-      # recurse into target's dependencies to get their lists of files
+-      sources_list = GetSourcesList(target_name_with_dir, sources_list, gen_dir)
++  with open(deps_list_path, 'r') as f_deps_list:
++      for deps_sources_path in f_deps_list:
++        target_name_with_dir = deps_sources_path.split(".sources_list")[0]
++        if (target_name_with_dir == target_prefix):
++          # add files from the target itself
++          deps_sources_path = deps_sources_path.rstrip('\n')
++          with open(deps_sources_path, 'r') as f_sources:
++              for source_file in f_sources:
++                full_source_path = os.path.dirname(target_name_with_dir.split(gen_dir \
++                + "/", 1)[1]) + "/" + source_file
++                sources_list.add(full_source_path.rstrip('\n'))
++        else:
++          # recurse into target's dependencies to get their lists of files
++          sources_list = GetSourcesList(target_name_with_dir, sources_list, gen_dir)
+   return sources_list
+ 
+ def _VerifyImportDeps(args, __):
